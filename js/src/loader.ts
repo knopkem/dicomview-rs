@@ -171,7 +171,16 @@ export class DICOMwebLoader {
   }
 
   async #fetchBytes(url: string, signal: AbortSignal): Promise<Uint8Array> {
-    const response = await this.#fetch(url, signal, "application/dicom; transfer-syntax=*");
+    const response = await this.#fetch(
+      url,
+      signal,
+      'multipart/related; type="application/dicom"',
+    );
+    const contentType = response.headers.get("Content-Type") ?? "";
+    if (contentType.includes("multipart/related")) {
+      return extractMultipartDicom(new Uint8Array(await response.arrayBuffer()), contentType);
+    }
+    // Fallback: server returned a single-part DICOM response
     return new Uint8Array(await response.arrayBuffer());
   }
 
@@ -461,4 +470,53 @@ function normalize(vector: [number, number, number]): [number, number, number] {
     return [0, 0, 1];
   }
   return [vector[0] / length, vector[1] / length, vector[2] / length];
+}
+
+/**
+ * Extract the DICOM file bytes from a WADO-RS multipart/related response.
+ *
+ * The response body contains one or more parts separated by a MIME boundary.
+ * We extract the first part (single-instance retrieval returns exactly one).
+ */
+function extractMultipartDicom(body: Uint8Array, contentType: string): Uint8Array {
+  const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+  if (!boundaryMatch) {
+    // No boundary found — assume the body is the raw DICOM bytes
+    return body;
+  }
+  const boundary = boundaryMatch[1].replace(/^"(.*)"$/, "$1");
+  const boundaryBytes = new TextEncoder().encode("--" + boundary);
+
+  // Find the first boundary
+  const firstBoundary = indexOfBytes(body, boundaryBytes, 0);
+  if (firstBoundary === -1) {
+    return body;
+  }
+
+  // After the boundary line, skip until we find \r\n\r\n (end of part headers)
+  const headerStart = firstBoundary + boundaryBytes.length;
+  const headerEnd = indexOfBytes(body, new Uint8Array([0x0d, 0x0a, 0x0d, 0x0a]), headerStart);
+  if (headerEnd === -1) {
+    return body;
+  }
+  const partStart = headerEnd + 4;
+
+  // Find the next boundary (or end boundary) — the part data ends 2 bytes before it (\r\n)
+  const nextBoundary = indexOfBytes(body, boundaryBytes, partStart);
+  const partEnd = nextBoundary === -1 ? body.length : nextBoundary - 2;
+
+  return body.subarray(partStart, partEnd);
+}
+
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array, offset: number): number {
+  const end = haystack.length - needle.length;
+  outer: for (let i = offset; i <= end; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) {
+        continue outer;
+      }
+    }
+    return i;
+  }
+  return -1;
 }
