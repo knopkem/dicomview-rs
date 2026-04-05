@@ -1,5 +1,5 @@
 {
-  "name": "@dicomview/core",
+  "name": "@knopkem/dicomview",
   "version": "0.1.0",
   "description": "Rust/WASM medical imaging primitives for the web",
   "type": "module",
