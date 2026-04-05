@@ -1,8 +1,14 @@
-# @dicomview/core
+# @knopkem/dicomview
 
-`@dicomview/core` is the browser package for `dicomview-rs`. It wraps the Rust/WASM viewer, handles wasm initialization, and provides a DICOMweb loader with optional worker-based decode.
+`@knopkem/dicomview` is the browser package for `dicomview-rs`. It wraps the Rust/WASM viewer, handles wasm initialization, and provides a DICOMweb loader with optional worker-based decode.
 
-## Build
+## Install
+
+```bash
+npm install @knopkem/dicomview
+```
+
+## Build (from source)
 
 ```bash
 npm install
@@ -16,25 +22,44 @@ npm run build
 
 The wasm-pack output is emitted into `js/wasm/`, which is the directory shipped in the npm tarball.
 
-## Publish checklist
+## Publish
+
+Use the top-level publish script from the repo root:
 
 ```bash
-npm install
-npm run build
-npm pack --dry-run
-npm publish
+# Full publish (Rust tests → WASM → TS → crates.io → npm)
+./publish.sh
+
+# Dry-run (builds everything, publishes nothing)
+./publish.sh --dry-run
+
+# npm only (skip crates.io)
+./publish.sh --skip-crates
 ```
 
+Or publish manually:
+
+```bash
+npm run build
+npm pack --dry-run    # inspect contents
+npm publish --access public
+```
 
 ## Public API
 
 ```ts
-import { DICOMwebLoader, Presets, Viewer } from "@dicomview/core";
+import {
+  DICOMwebLoader,
+  Presets,
+  Viewer,
+  StackViewer,
+} from "@knopkem/dicomview";
 ```
 
-- `Viewer.create(...)` mounts the four-canvas Rust/WebGPU renderer
-- `DICOMwebLoader.loadSeries(...)` streams a DICOMweb series into the viewer
-- `Presets` exposes the built-in CT/MR transfer-function identifiers
+- `Viewer.create(...)` — four-canvas MPR + volume renderer (axial, coronal, sagittal, volume)
+- `StackViewer.create(...)` — single-canvas 2D stack viewer with scroll, window/level, and thick-slab
+- `DICOMwebLoader` — streams a DICOMweb series into either viewer type
+- `Presets` — built-in CT/MR transfer-function identifiers
 
 ## Notes
 

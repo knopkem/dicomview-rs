@@ -9,7 +9,7 @@
 | `crates/dicomview-core` | WASM-safe DICOM decode, metadata extraction, incremental volumes, MPR/volume state, presets |
 | `crates/dicomview-gpu` | Multi-viewport orchestration on top of `volren-rs`, including progressive 3D texture uploads |
 | `crates/dicomview-wasm` | `wasm-bindgen` facade for browsers plus a simple WADO-RS loader |
-| `js/` | Publishable `@dicomview/core` package with viewer wrapper, DICOMweb loader, and decode workers |
+| `js/` | Publishable `@knopkem/dicomview` package with viewer wrapper, DICOMweb loader, and decode workers |
 
 ## Implemented scope
 
@@ -18,8 +18,10 @@
 - axial / coronal / sagittal MPR state with shared crosshair support
 - thick-slab MIP / MinIP / average slice rendering
 - WebGPU volume rendering with built-in CT and MR presets
-- browser `Viewer` API exposed from Rust/WASM
-- TypeScript `Viewer` and `DICOMwebLoader` wrapper classes
+- single-canvas `StackViewer` for 2D stack browsing
+- four-canvas `Viewer` for MPR + volume rendering
+- aspect-ratio-correct slice rendering (no stretching)
+- TypeScript `Viewer`, `StackViewer`, and `DICOMwebLoader` wrapper classes
 - optional web-worker decode path in the npm loader
 
 ## Current limitations
@@ -41,11 +43,32 @@ npm install
 npm run build
 ```
 
+## Publish
+
+A single script handles the full release pipeline (Rust tests → WASM build → TS build → crates.io → npm):
+
+```bash
+# Full publish
+./publish.sh
+
+# Dry-run (builds everything, publishes nothing)
+./publish.sh --dry-run
+
+# npm only (skip crates.io — e.g. when only JS/TS changed)
+./publish.sh --skip-crates
+
+# crates.io only (skip npm)
+./publish.sh --skip-npm
+```
+
+The script verifies that `Cargo.toml` and `package.json` versions match before proceeding.
+
 ## Package usage
 
 ```ts
-import { DICOMwebLoader, Presets, Viewer } from "@dicomview/core";
+import { DICOMwebLoader, Presets, Viewer, StackViewer } from "@knopkem/dicomview";
 
+// --- Four-canvas MPR + volume rendering ---
 const viewer = await Viewer.create({
   axial: document.getElementById("axial") as HTMLCanvasElement,
   coronal: document.getElementById("coronal") as HTMLCanvasElement,
@@ -53,6 +76,12 @@ const viewer = await Viewer.create({
   volume: document.getElementById("volume") as HTMLCanvasElement,
 });
 
+// --- Single-canvas 2D stack browsing ---
+const stack = await StackViewer.create({
+  canvas: document.getElementById("canvas") as HTMLCanvasElement,
+});
+
+// --- Load a series ---
 const loader = new DICOMwebLoader({
   wadoRoot: "https://pacs.example.com/dicom-web",
   decodeWorkers: 2,
