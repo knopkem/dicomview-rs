@@ -16,10 +16,14 @@
     }
   },
   "scripts": {
-    "build:wasm": "wasm-pack build ../crates/dicomview-wasm --target web --out-dir ./wasm --out-name dicomview_wasm",
+    "build:wasm": "wasm-pack build ../crates/dicomview-wasm --target web --out-dir ../../js/wasm --out-name dicomview_wasm && rm -f ./wasm/.gitignore ./wasm/package.json",
     "build:ts": "tsc -p tsconfig.json",
     "build": "npm run build:wasm && npm run build:ts",
+    "prepack": "npm run build",
     "test": "tsc -p tsconfig.json --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT OR Apache-2.0",
   "devDependencies": {

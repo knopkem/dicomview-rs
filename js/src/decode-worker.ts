@@ -21,7 +21,7 @@ type DecodeResponse =
       message: string;
     };
 
-let wasmReady: Promise<void> | null = null;
+let wasmReady: ReturnType<typeof initWasm> | null = null;
 
 self.addEventListener("message", async (event: MessageEvent<DecodeRequest>) => {
   const message = event.data;

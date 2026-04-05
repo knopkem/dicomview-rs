@@ -30,7 +30,7 @@ const PROJECTION_CODE: Record<ProjectionMode, number> = {
   average: 3,
 };
 
-let wasmInitPromise: Promise<void> | null = null;
+let wasmInitPromise: ReturnType<typeof initWasm> | null = null;
 
 export async function ensureDicomviewWasm(wasmUrl?: WasmSource): Promise<void> {
   if (!wasmInitPromise) {

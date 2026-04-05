@@ -11,8 +11,20 @@ npm run build
 
 `npm run build` performs two steps:
 
-1. `wasm-pack build ../crates/dicomview-wasm --target web --out-dir ./wasm`
+1. `wasm-pack build ../crates/dicomview-wasm --target web --out-dir ../../js/wasm`
 2. `tsc -p tsconfig.json`
+
+The wasm-pack output is emitted into `js/wasm/`, which is the directory shipped in the npm tarball.
+
+## Publish checklist
+
+```bash
+npm install
+npm run build
+npm pack --dry-run
+npm publish
+```
+
 
 ## Public API
 
