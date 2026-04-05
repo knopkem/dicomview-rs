@@ -119,6 +119,10 @@ impl RenderEngine {
             (0.0, 1.0),
             true,
         );
+        // Upload an initial transfer function so render_volume() doesn't fail
+        // before the first slice arrives and updates the scalar range.
+        let params = render_params_for_state(self.active_preset, self.volume_state, (0.0, 1.0));
+        let _ = self.renderer.set_render_params(&params);
         Ok(())
     }
 
@@ -134,6 +138,9 @@ impl RenderEngine {
             .map(|(min, max)| (f64::from(min), f64::from(max)))
             .unwrap_or((0.0, 1.0));
         update_texture_slice_i16(&mut self.renderer, z_index, pixels, scalar_range)?;
+        // Refresh the transfer function with the updated scalar range
+        let params = render_params_for_state(self.active_preset, self.volume_state, scalar_range);
+        let _ = self.renderer.set_render_params(&params);
         Ok(())
     }
 

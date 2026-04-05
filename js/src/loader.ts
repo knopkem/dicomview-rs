@@ -116,7 +116,11 @@ export class DICOMwebLoader {
             };
       requestFrame(() => {
         renderScheduled = false;
-        viewer.render();
+        try {
+          viewer.render();
+        } catch {
+          // Viewer may have been destroyed between scheduling and callback
+        }
       });
     };
 
@@ -156,7 +160,11 @@ export class DICOMwebLoader {
       );
 
       await Promise.all(workers);
-      viewer.render();
+      try {
+        viewer.render();
+      } catch {
+        // Viewer may have been destroyed during load
+      }
     } finally {
       pool?.destroy();
       if (this.#abortController === controller) {
