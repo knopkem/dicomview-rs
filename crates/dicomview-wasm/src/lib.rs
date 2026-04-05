@@ -11,6 +11,7 @@ mod viewer;
 
 use dicomview_core::decode_dicom_frame;
 pub use loader::WadoLoader;
+pub use viewer::StackViewer;
 pub use viewer::Viewer;
 
 /// Initializes the panic hook used by the wasm facade.

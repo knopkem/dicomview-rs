@@ -2,6 +2,61 @@
 /* eslint-disable */
 
 /**
+ * A single-canvas viewer for 2D stack browsing (like cornerstone's `StackViewport`).
+ *
+ * Unlike [`Viewer`] which requires 4 canvases, this only needs one.
+ */
+export class StackViewer {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Creates a new stack viewer bound to a single canvas element.
+     */
+    static create(config: any): Promise<StackViewer>;
+    /**
+     * Explicitly destroys the stack viewer and releases its resources.
+     */
+    destroy(): void;
+    /**
+     * Decodes one DICOM Part 10 payload and uploads its frame data.
+     */
+    feed_dicom_slice(z_index: number, bytes: Uint8Array): void;
+    /**
+     * Uploads one already-decoded signed 16-bit slice.
+     */
+    feed_pixel_slice(z_index: number, pixels: Int16Array): void;
+    /**
+     * Returns the current loading progress in `[0, 1]`.
+     */
+    loading_progress(): number;
+    /**
+     * Prepares an empty volume with the provided geometry object.
+     */
+    prepare_volume(geometry: any): void;
+    /**
+     * Renders the single slice canvas.
+     */
+    render(): void;
+    /**
+     * Resets all viewport state back to defaults.
+     */
+    reset(): void;
+    /**
+     * Scrolls the slice along its normal.
+     */
+    scroll_slice(delta: number): void;
+    /**
+     * Switches which orthogonal plane is displayed.
+     */
+    set_slice_mode(viewport: number): void;
+    /**
+     * Applies one window/level setting to the viewport.
+     */
+    set_window_level(center: number, width: number): void;
+}
+
+/**
  * One JS-visible viewer instance managing four canvases.
  */
 export class Viewer {
@@ -120,7 +175,19 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_stackviewer_free: (a: number, b: number) => void;
     readonly __wbg_viewer_free: (a: number, b: number) => void;
+    readonly stackviewer_create: (a: any) => any;
+    readonly stackviewer_destroy: (a: number) => void;
+    readonly stackviewer_feed_dicom_slice: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly stackviewer_feed_pixel_slice: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly stackviewer_loading_progress: (a: number) => number;
+    readonly stackviewer_prepare_volume: (a: number, b: any) => [number, number];
+    readonly stackviewer_render: (a: number) => [number, number];
+    readonly stackviewer_reset: (a: number) => [number, number];
+    readonly stackviewer_scroll_slice: (a: number, b: number) => [number, number];
+    readonly stackviewer_set_slice_mode: (a: number, b: number) => [number, number];
+    readonly stackviewer_set_window_level: (a: number, b: number, c: number) => [number, number];
     readonly viewer_create: (a: any) => any;
     readonly viewer_destroy: (a: number) => void;
     readonly viewer_feed_dicom_slice: (a: number, b: number, c: number, d: number) => [number, number];

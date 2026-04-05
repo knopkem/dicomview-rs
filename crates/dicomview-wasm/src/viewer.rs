@@ -10,7 +10,9 @@ use js_sys::Reflect;
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-use dicomview_gpu::{CanvasSurface, FrameTargets, RenderEngine, RenderTarget, Viewport};
+use dicomview_gpu::{
+    CanvasSurface, FrameTargets, RenderEngine, RenderTarget, SingleSliceEngine, Viewport,
+};
 #[cfg(target_arch = "wasm32")]
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
@@ -682,15 +684,287 @@ fn parse_blend_mode(value: u8) -> Result<VolumeBlendMode, JsValue> {
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn parse_preset_id(name: &str) -> Result<VolumePresetId, JsValue> {
-    match name {
-        "ct-bone" => Ok(VolumePresetId::CtBone),
-        "ct-soft-tissue" => Ok(VolumePresetId::CtSoftTissue),
-        "ct-lung" => Ok(VolumePresetId::CtLung),
-        "ct-mip" => Ok(VolumePresetId::CtMip),
-        "mr-default" => Ok(VolumePresetId::MrDefault),
-        "mr-angio" => Ok(VolumePresetId::MrAngio),
-        "mr-t2-brain" => Ok(VolumePresetId::MrT2Brain),
+    let normalized: String = name.to_lowercase().replace(' ', "");
+    match normalized.as_str() {
+        "ct-bone" | "ctbone" => Ok(VolumePresetId::CtBone),
+        "ct-soft-tissue" | "ctsofttissue" => Ok(VolumePresetId::CtSoftTissue),
+        "ct-lung" | "ctlung" => Ok(VolumePresetId::CtLung),
+        "ct-mip" | "ctmip" => Ok(VolumePresetId::CtMip),
+        "mr-default" | "mrdefault" => Ok(VolumePresetId::MrDefault),
+        "mr-angio" | "mrangio" => Ok(VolumePresetId::MrAngio),
+        "mr-t2-brain" | "mrt2brain" | "mr-t2brain" => Ok(VolumePresetId::MrT2Brain),
         _ => Err(js_error(format!("unknown volume preset `{name}`"))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// StackViewer — single-canvas viewer for 2D stack browsing
+// ---------------------------------------------------------------------------
+
+/// A single-canvas viewer for 2D stack browsing (like cornerstone's `StackViewport`).
+///
+/// Unlike [`Viewer`] which requires 4 canvases, this only needs one.
+#[wasm_bindgen]
+pub struct StackViewer {
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    inner: StackViewerInner,
+}
+
+#[cfg(target_arch = "wasm32")]
+struct StackViewerInner {
+    device: Arc<wgpu::Device>,
+    queue: Arc<wgpu::Queue>,
+    engine: SingleSliceEngine,
+    canvas: CanvasBinding,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct StackViewerInner;
+
+#[wasm_bindgen]
+impl StackViewer {
+    /// Creates a new stack viewer bound to a single canvas element.
+    #[wasm_bindgen(js_name = create)]
+    pub async fn create(config: JsValue) -> Result<StackViewer, JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = config;
+            Err(js_error(
+                "dicomview-wasm StackViewer is only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let canvas = extract_canvas(&config, "canvas")?;
+
+            let instance = wgpu::Instance::default();
+            let adapter: wgpu::Adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: None,
+                    force_fallback_adapter: false,
+                })
+                .await
+                .map_err(|error| js_error(format!("failed to acquire GPU adapter: {error}")))?;
+            let (device, queue): (wgpu::Device, wgpu::Queue) = adapter
+                .request_device(&wgpu::DeviceDescriptor::default())
+                .await
+                .map_err(|error| js_error(format!("failed to acquire GPU device: {error}")))?;
+            let device = Arc::new(device);
+            let queue = Arc::new(queue);
+
+            let surface = CanvasSurface::from_canvas(
+                &instance,
+                &adapter,
+                &device,
+                canvas.clone(),
+                None,
+            )
+            .map_err(|error| js_error(error.to_string()))?;
+            let output_format = surface.format;
+            let engine = SingleSliceEngine::from_arc(device.clone(), queue.clone(), output_format);
+
+            Ok(Self {
+                inner: StackViewerInner {
+                    device,
+                    queue,
+                    engine,
+                    canvas: CanvasBinding { canvas, surface },
+                },
+            })
+        }
+    }
+
+    /// Prepares an empty volume with the provided geometry object.
+    pub fn prepare_volume(&mut self, geometry: JsValue) -> Result<(), JsValue> {
+        let geometry = parse_geometry(&geometry)?;
+        self.prepare_volume_native(geometry)
+    }
+
+    /// Decodes one DICOM Part 10 payload and uploads its frame data.
+    pub fn feed_dicom_slice(&mut self, z_index: usize, bytes: &[u8]) -> Result<(), JsValue> {
+        let frames = decode_dicom(bytes).map_err(|error| js_error(error.to_string()))?;
+        for (frame_offset, frame) in frames.into_iter().enumerate() {
+            self.feed_pixel_slice_native((z_index + frame_offset) as u32, &frame.pixels)?;
+        }
+        Ok(())
+    }
+
+    /// Uploads one already-decoded signed 16-bit slice.
+    pub fn feed_pixel_slice(&mut self, z_index: usize, pixels: &[i16]) -> Result<(), JsValue> {
+        self.feed_pixel_slice_native(z_index as u32, pixels)
+    }
+
+    /// Returns the current loading progress in `[0, 1]`.
+    #[must_use]
+    pub fn loading_progress(&self) -> f64 {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            0.0
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .prepared_volume()
+                .map_or(0.0, |volume| volume.loading_progress())
+        }
+    }
+
+    /// Renders the single slice canvas.
+    pub fn render(&mut self) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Err(js_error("rendering is only supported on wasm32 targets"))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner.render()
+        }
+    }
+
+    /// Scrolls the slice along its normal.
+    pub fn scroll_slice(&mut self, delta: f64) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = delta;
+            Err(js_error(
+                "slice scrolling is only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .scroll_slice(delta)
+                .map_err(|error| js_error(error.to_string()))
+        }
+    }
+
+    /// Applies one window/level setting to the viewport.
+    pub fn set_window_level(&mut self, center: f64, width: f64) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (center, width);
+            Err(js_error(
+                "window/level updates are only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .set_window_level(center, width)
+                .map_err(|error| js_error(error.to_string()))
+        }
+    }
+
+    /// Switches which orthogonal plane is displayed.
+    pub fn set_slice_mode(&mut self, viewport: u8) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = viewport;
+            Err(js_error(
+                "slice mode updates are only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .set_slice_mode(parse_slice_viewport(viewport)?);
+            Ok(())
+        }
+    }
+
+    /// Resets all viewport state back to defaults.
+    pub fn reset(&mut self) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Err(js_error("reset is only supported on wasm32 targets"))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner.engine.reset();
+            Ok(())
+        }
+    }
+
+    /// Explicitly destroys the stack viewer and releases its resources.
+    pub fn destroy(self) {}
+}
+
+impl StackViewer {
+    fn prepare_volume_native(&mut self, geometry: VolumeGeometry) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = geometry;
+            Err(js_error(
+                "volume preparation is only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .prepare_volume(geometry)
+                .map_err(|error| js_error(error.to_string()))
+        }
+    }
+
+    fn feed_pixel_slice_native(&mut self, z_index: u32, pixels: &[i16]) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (z_index, pixels);
+            Err(js_error(
+                "pixel uploads are only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .insert_slice(z_index, pixels)
+                .map_err(|error| js_error(error.to_string()))
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl StackViewerInner {
+    fn render(&mut self) -> Result<(), JsValue> {
+        let device = self.device.clone();
+        let frame = acquire_frame(&mut self.canvas, &device)?;
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("dicomview-stack-frame"),
+            });
+        self.engine
+            .render_slice(
+                &mut encoder,
+                &RenderTarget {
+                    view: &view,
+                    viewport: viewport_from_binding(&self.canvas),
+                },
+            )
+            .map_err(|error| js_error(error.to_string()))?;
+        self.queue.submit(Some(encoder.finish()));
+        frame.present();
+        Ok(())
     }
 }
 
@@ -709,5 +983,40 @@ mod tests {
     fn parses_preset_names() {
         assert_eq!(parse_preset_id("ct-bone").unwrap(), VolumePresetId::CtBone);
         assert!(parse_preset_id("unknown").is_err());
+    }
+
+    #[test]
+    fn parses_cornerstone_style_preset_names() {
+        assert_eq!(parse_preset_id("CT-Bone").unwrap(), VolumePresetId::CtBone);
+        assert_eq!(
+            parse_preset_id("CT-Soft-Tissue").unwrap(),
+            VolumePresetId::CtSoftTissue
+        );
+        assert_eq!(parse_preset_id("CT-Lung").unwrap(), VolumePresetId::CtLung);
+        assert_eq!(parse_preset_id("CT-MIP").unwrap(), VolumePresetId::CtMip);
+        assert_eq!(
+            parse_preset_id("MR-Default").unwrap(),
+            VolumePresetId::MrDefault
+        );
+        assert_eq!(
+            parse_preset_id("MR-Angio").unwrap(),
+            VolumePresetId::MrAngio
+        );
+        assert_eq!(
+            parse_preset_id("MR-T2-Brain").unwrap(),
+            VolumePresetId::MrT2Brain
+        );
+    }
+
+    #[test]
+    fn parses_mixed_case_preset_names() {
+        assert_eq!(
+            parse_preset_id("ct-BONE").unwrap(),
+            VolumePresetId::CtBone
+        );
+        assert_eq!(
+            parse_preset_id("Ct-Soft-Tissue").unwrap(),
+            VolumePresetId::CtSoftTissue
+        );
     }
 }

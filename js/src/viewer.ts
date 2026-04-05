@@ -1,7 +1,11 @@
-import initWasm, { Viewer as WasmViewer } from "../wasm/dicomview_wasm.js";
+import initWasm, {
+  Viewer as WasmViewer,
+  StackViewer as WasmStackViewer,
+} from "../wasm/dicomview_wasm.js";
 import type {
   BlendMode,
   ProjectionMode,
+  StackViewerOptions,
   ThickSlabOptions,
   ViewerOptions,
   ViewportId,
@@ -145,4 +149,76 @@ function toUint8Array(value: ArrayBuffer | ArrayBufferView): Uint8Array {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }
   return new Uint8Array(value);
+}
+
+/**
+ * Single-canvas viewer for 2D stack browsing.
+ *
+ * Unlike {@link Viewer} which requires 4 canvases (axial, coronal, sagittal,
+ * volume), this only needs one canvas element. It renders a single orthogonal
+ * slice that users can scroll through.
+ */
+export class StackViewer {
+  #inner: WasmStackViewer | null;
+
+  private constructor(inner: WasmStackViewer) {
+    this.#inner = inner;
+  }
+
+  static async create(options: StackViewerOptions): Promise<StackViewer> {
+    await ensureDicomviewWasm(options.wasmUrl);
+    const inner = await WasmStackViewer.create({ canvas: options.canvas });
+    return new StackViewer(inner);
+  }
+
+  get loadingProgress(): number {
+    return this.#requireInner().loading_progress();
+  }
+
+  prepareVolume(geometry: VolumeGeometry): void {
+    this.#requireInner().prepare_volume(geometry);
+  }
+
+  feedDicomSlice(zIndex: number, bytes: ArrayBuffer | ArrayBufferView): void {
+    this.#requireInner().feed_dicom_slice(zIndex, toUint8Array(bytes));
+  }
+
+  feedPixelSlice(zIndex: number, pixels: Int16Array | ArrayBuffer): void {
+    const data = pixels instanceof Int16Array ? pixels : new Int16Array(pixels);
+    this.#requireInner().feed_pixel_slice(zIndex, data);
+  }
+
+  render(): void {
+    this.#requireInner().render();
+  }
+
+  scrollSlice(delta: number): void {
+    this.#requireInner().scroll_slice(delta);
+  }
+
+  setWindowLevel(center: number, width: number): void {
+    this.#requireInner().set_window_level(center, width);
+  }
+
+  setSliceMode(viewport: ViewportId): void {
+    this.#requireInner().set_slice_mode(VIEWPORT_CODE[viewport]);
+  }
+
+  reset(): void {
+    this.#requireInner().reset();
+  }
+
+  destroy(): void {
+    if (this.#inner) {
+      this.#inner.destroy();
+      this.#inner = null;
+    }
+  }
+
+  #requireInner(): WasmStackViewer {
+    if (!this.#inner) {
+      throw new Error("StackViewer has already been destroyed");
+    }
+    return this.#inner;
+  }
 }

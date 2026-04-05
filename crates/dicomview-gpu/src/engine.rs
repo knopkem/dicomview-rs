@@ -450,6 +450,165 @@ fn crosshair_colors(mode: SlicePreviewMode) -> ([f32; 4], [f32; 4]) {
     }
 }
 
+/// Lightweight single-canvas renderer for stack (2D) viewing.
+///
+/// Unlike [`RenderEngine`] which manages 4 viewports, this engine renders
+/// a single slice viewport into one canvas. It uses the same underlying
+/// [`VolumeRenderer`] and [`IncrementalVolume`] for data storage and
+/// GPU-accelerated reslicing.
+pub struct SingleSliceEngine {
+    renderer: VolumeRenderer,
+    prepared_volume: Option<IncrementalVolume>,
+    geometry: Option<VolumeGeometry>,
+    slice_state: SlicePreviewState,
+    #[allow(dead_code)]
+    device: Arc<wgpu::Device>,
+    #[allow(dead_code)]
+    queue: Arc<wgpu::Queue>,
+}
+
+impl SingleSliceEngine {
+    /// Creates a single-slice renderer targeting the provided output format.
+    #[must_use]
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        output_format: wgpu::TextureFormat,
+    ) -> Self {
+        Self::from_arc(
+            Arc::new(device.clone()),
+            Arc::new(queue.clone()),
+            output_format,
+        )
+    }
+
+    /// Creates a single-slice renderer from shared `Arc` handles.
+    #[must_use]
+    pub fn from_arc(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        output_format: wgpu::TextureFormat,
+    ) -> Self {
+        Self {
+            renderer: VolumeRenderer::from_arc(device.clone(), queue.clone(), output_format),
+            prepared_volume: None,
+            geometry: None,
+            slice_state: SlicePreviewState::default(),
+            device,
+            queue,
+        }
+    }
+
+    /// Prepares an empty progressive volume and allocates its GPU texture.
+    pub fn prepare_volume(&mut self, geometry: VolumeGeometry) -> Result<(), RenderEngineError> {
+        self.prepared_volume = Some(IncrementalVolume::new(geometry)?);
+        self.geometry = Some(geometry);
+        self.renderer.allocate_volume(
+            geometry.dimensions,
+            geometry.spacing,
+            geometry.origin,
+            geometry.direction,
+            (0.0, 1.0),
+            true,
+        );
+        Ok(())
+    }
+
+    /// Inserts one slice into the progressive volume and uploads it to the GPU.
+    pub fn insert_slice(&mut self, z_index: u32, pixels: &[i16]) -> Result<(), RenderEngineError> {
+        let volume = self
+            .prepared_volume
+            .as_mut()
+            .ok_or(RenderEngineError::NoPreparedVolume)?;
+        volume.insert_slice(z_index, pixels)?;
+        let scalar_range = volume
+            .scalar_range()
+            .map(|(min, max)| (f64::from(min), f64::from(max)))
+            .unwrap_or((0.0, 1.0));
+        update_texture_slice_i16(&mut self.renderer, z_index, pixels, scalar_range)?;
+        Ok(())
+    }
+
+    /// Returns the prepared progressive volume, if any.
+    #[must_use]
+    pub fn prepared_volume(&self) -> Option<&IncrementalVolume> {
+        self.prepared_volume.as_ref()
+    }
+
+    /// Returns mutable access to the slice viewport state.
+    pub fn slice_state_mut(&mut self) -> &mut SlicePreviewState {
+        &mut self.slice_state
+    }
+
+    /// Returns the currently known scalar range.
+    #[must_use]
+    pub fn scalar_range(&self) -> Option<(f64, f64)> {
+        self.prepared_volume
+            .as_ref()
+            .and_then(IncrementalVolume::scalar_range)
+            .map(|(min, max)| (f64::from(min), f64::from(max)))
+    }
+
+    /// Switches which orthogonal plane is displayed.
+    pub fn set_slice_mode(&mut self, mode: SlicePreviewMode) {
+        self.slice_state.set_mode(mode);
+    }
+
+    /// Scrolls the slice along its normal.
+    pub fn scroll_slice(&mut self, delta: f64) -> Result<(), RenderEngineError> {
+        let bounds = self.bounds()?;
+        self.slice_state.scroll_by(delta, bounds);
+        Ok(())
+    }
+
+    /// Applies a transfer window to the slice viewport.
+    pub fn set_window_level(&mut self, center: f64, width: f64) -> Result<(), RenderEngineError> {
+        let (scalar_min, scalar_max) = self
+            .scalar_range()
+            .ok_or(RenderEngineError::NoPreparedVolume)?;
+        self.slice_state
+            .set_transfer_window(center, width, scalar_min, scalar_max);
+        Ok(())
+    }
+
+    /// Resets the slice viewport state.
+    pub fn reset(&mut self) {
+        self.slice_state.reset();
+    }
+
+    /// Renders the single slice into the provided target.
+    pub fn render_slice(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &RenderTarget<'_>,
+    ) -> Result<(), RenderEngineError> {
+        let _volume = self
+            .prepared_volume
+            .as_ref()
+            .ok_or(RenderEngineError::NoPreparedVolume)?;
+        let geometry = self.geometry.ok_or(RenderEngineError::NoPreparedVolume)?;
+        let bounds = bounds_from_geometry(geometry);
+        let scalar_range = self.scalar_range().unwrap_or((0.0, 1.0));
+        let (center, width) = self.slice_state.transfer_window(scalar_range.0, scalar_range.1);
+        let window_level = WindowLevel::new(center, width.max(1.0));
+        let slice_plane = self.slice_state.slice_plane(bounds);
+        self.renderer.render_slice(
+            encoder,
+            target.view,
+            &slice_plane,
+            &window_level,
+            target.viewport,
+            self.slice_state.thick_slab().as_ref(),
+        )?;
+        Ok(())
+    }
+
+    fn bounds(&self) -> Result<Aabb, RenderEngineError> {
+        let geometry = self.geometry.ok_or(RenderEngineError::NoPreparedVolume)?;
+        Ok(bounds_from_geometry(geometry))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

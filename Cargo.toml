@@ -7,15 +7,15 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT OR Apache-2.0"
 authors = ["Michael Knopke"]
 
 [workspace.dependencies]
-dicomview-core = { path = "crates/dicomview-core", version = "0.1.0" }
-dicomview-gpu = { path = "crates/dicomview-gpu", version = "0.1.0" }
+dicomview-core = { path = "crates/dicomview-core", version = "0.2.0" }
+dicomview-gpu = { path = "crates/dicomview-gpu", version = "0.2.0" }
 
 dicom-toolkit-core = "0.5.0"
 dicom-toolkit-dict = "0.5.0"

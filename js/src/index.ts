@@ -1,12 +1,15 @@
 export { DICOMwebLoader } from "./loader.js";
-export { Presets } from "./presets.js";
-export { ensureDicomviewWasm, Viewer } from "./viewer.js";
+export { CornerstonePresets, Presets } from "./presets.js";
+export { ensureDicomviewWasm, StackViewer, Viewer } from "./viewer.js";
+export { InputHandler, VolumeInputHandler } from "./input-handler.js";
 export type {
   BlendMode,
   DICOMwebLoaderOptions,
+  InputTool,
   ProgressCallback,
   ProjectionMode,
   SeriesParams,
+  StackViewerOptions,
   ThickSlabOptions,
   ViewportId,
   ViewerOptions,

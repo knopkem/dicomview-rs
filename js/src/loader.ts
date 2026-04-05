@@ -1,4 +1,4 @@
-import { Viewer } from "./viewer.js";
+import { StackViewer, Viewer } from "./viewer.js";
 import type {
   DICOMwebLoaderOptions,
   ProgressCallback,
@@ -79,7 +79,8 @@ export class DICOMwebLoader {
     this.#abortController = null;
   }
 
-  async loadSeries(viewer: Viewer, params: SeriesParams): Promise<void> {
+  async loadSeries(viewer: Viewer | StackViewer, params: SeriesParams): Promise<void> {
+    const renderDuringLoad = this.#options.renderDuringLoad !== false;
     const controller = new AbortController();
     this.#abortController = controller;
     const metadataUrl = [
@@ -102,7 +103,7 @@ export class DICOMwebLoader {
     let nextIndex = 0;
     let renderScheduled = false;
     const scheduleRender = (): void => {
-      if (renderScheduled) {
+      if (!renderDuringLoad || renderScheduled) {
         return;
       }
       renderScheduled = true;

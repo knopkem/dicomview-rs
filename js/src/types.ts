@@ -11,7 +11,14 @@ export type VolumePreset =
   | "ct-mip"
   | "mr-default"
   | "mr-angio"
-  | "mr-t2-brain";
+  | "mr-t2-brain"
+  | "CT-Bone"
+  | "CT-Soft-Tissue"
+  | "CT-Lung"
+  | "CT-MIP"
+  | "MR-Default"
+  | "MR-Angio"
+  | "MR-T2-Brain";
 
 export type WasmSource = string | URL | Request | Response;
 
@@ -40,6 +47,13 @@ export interface ThickSlabOptions {
   projection: ProjectionMode;
 }
 
+export interface StackViewerOptions {
+  canvas: HTMLCanvasElement;
+  wasmUrl?: WasmSource;
+}
+
+export type InputTool = "windowLevel" | "pan" | "zoom" | "crosshair" | "scroll";
+
 export interface SeriesParams {
   studyUid: string;
   seriesUid: string;
@@ -54,4 +68,6 @@ export interface DICOMwebLoaderOptions {
   concurrency?: number;
   decodeWorkers?: number;
   wasmUrl?: WasmSource;
+  /** When true (default), renders after each slice during loading. */
+  renderDuringLoad?: boolean;
 }
