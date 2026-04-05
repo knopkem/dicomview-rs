@@ -1,5 +1,6 @@
 [package]
 name = "dicomview-core"
+description = "WASM-safe DICOM decode, incremental volumes, MPR state, and rendering presets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

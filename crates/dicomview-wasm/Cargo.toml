@@ -1,5 +1,6 @@
 [package]
 name = "dicomview-wasm"
+description = "wasm-bindgen facade for the dicomview-rs medical imaging viewer"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "dicomview-gpu"
+description = "WebGPU multi-viewport rendering engine for dicomview-rs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
