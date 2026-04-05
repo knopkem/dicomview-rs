@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>dicomview-rs volume rendering</title>
+    <style>
+      body {
+        margin: 0;
+        background: #0a0c10;
+        color: #f5f7fa;
+        font-family: sans-serif;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 16px;
+        height: 100vh;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      aside {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        background: black;
+      }
+      .hidden-grid {
+        display: none;
+      }
+      button,
+      select {
+        padding: 8px 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <aside>
+        <p>Update <code>main.js</code> with your endpoint and series UIDs.</p>
+        <label>
+          Preset
+          <select id="preset">
+            <option value="ct-bone">CT Bone</option>
+            <option value="ct-soft-tissue">CT Soft Tissue</option>
+            <option value="ct-lung">CT Lung</option>
+            <option value="ct-mip">CT MIP</option>
+            <option value="mr-default">MR Default</option>
+            <option value="mr-angio">MR Angio</option>
+            <option value="mr-t2-brain">MR T2 Brain</option>
+          </select>
+        </label>
+        <button id="mip">Switch to MIP</button>
+      </aside>
+      <canvas id="volume" width="1280" height="960"></canvas>
+    </main>
+    <div class="hidden-grid">
+      <canvas id="axial" width="2" height="2"></canvas>
+      <canvas id="coronal" width="2" height="2"></canvas>
+      <canvas id="sagittal" width="2" height="2"></canvas>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

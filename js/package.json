@@ -1,0 +1,28 @@
+{
+  "name": "@dicomview/core",
+  "version": "0.1.0",
+  "description": "Rust/WASM medical imaging primitives for the web",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "wasm",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build:wasm": "wasm-pack build ../crates/dicomview-wasm --target web --out-dir ./wasm --out-name dicomview_wasm",
+    "build:ts": "tsc -p tsconfig.json",
+    "build": "npm run build:wasm && npm run build:ts",
+    "test": "tsc -p tsconfig.json --noEmit"
+  },
+  "license": "MIT OR Apache-2.0",
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

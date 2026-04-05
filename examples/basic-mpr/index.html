@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>dicomview-rs basic MPR</title>
+    <style>
+      body {
+        margin: 0;
+        background: #101218;
+        color: #f5f7fa;
+        font-family: sans-serif;
+      }
+      header {
+        padding: 16px 20px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 12px;
+        padding: 0 20px 20px;
+        height: calc(100vh - 88px);
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        background: black;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      Edit <code>main.js</code> with your DICOMweb endpoint and series UIDs, then serve this folder over HTTP.
+    </header>
+    <div class="grid">
+      <canvas id="axial" width="640" height="640"></canvas>
+      <canvas id="coronal" width="640" height="640"></canvas>
+      <canvas id="sagittal" width="640" height="640"></canvas>
+      <canvas id="volume" width="640" height="640"></canvas>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

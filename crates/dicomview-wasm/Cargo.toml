@@ -1,0 +1,29 @@
+[package]
+name = "dicomview-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dicomview-core.workspace = true
+dicomview-gpu.workspace = true
+glam.workspace = true
+thiserror.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+web-sys.workspace = true
+console_error_panic_hook.workspace = true
+tracing.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+bytemuck.workspace = true
+dicom-toolkit-data.workspace = true
+dicom-toolkit-dict.workspace = true
+wasm-bindgen-test = "0.3"

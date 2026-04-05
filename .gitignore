@@ -1,0 +1,24 @@
+# Rust
+/target
+Cargo.lock
+
+# JavaScript / npm
+/js/node_modules/
+/js/dist/
+/js/coverage/
+
+# wasm-pack outputs
+/js/wasm/*
+!/js/wasm/dicomview_wasm.d.ts
+/crates/dicomview-wasm/wasm/*
+!/crates/dicomview-wasm/wasm/.gitignore
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
