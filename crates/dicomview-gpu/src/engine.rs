@@ -323,7 +323,19 @@ impl RenderEngine {
     ) -> Result<(), RenderEngineError> {
         let (center, width) = state.transfer_window(scalar_range.0, scalar_range.1);
         let window_level = WindowLevel::new(center, width.max(1.0));
-        let slice_plane = state.slice_plane(bounds);
+        let mut slice_plane = state.slice_plane(bounds);
+
+        // Preserve data aspect ratio within the viewport
+        let vp_w = f64::from(target.viewport.width.max(1));
+        let vp_h = f64::from(target.viewport.height.max(1));
+        let vp_aspect = vp_w / vp_h;
+        let data_aspect = slice_plane.width / slice_plane.height.max(1e-6);
+        if vp_aspect > data_aspect {
+            slice_plane.width = slice_plane.height * vp_aspect;
+        } else {
+            slice_plane.height = slice_plane.width / vp_aspect;
+        }
+
         self.renderer.render_slice(
             encoder,
             target.view,
@@ -598,7 +610,20 @@ impl SingleSliceEngine {
         let scalar_range = self.scalar_range().unwrap_or((0.0, 1.0));
         let (center, width) = self.slice_state.transfer_window(scalar_range.0, scalar_range.1);
         let window_level = WindowLevel::new(center, width.max(1.0));
-        let slice_plane = self.slice_state.slice_plane(bounds);
+        let mut slice_plane = self.slice_state.slice_plane(bounds);
+
+        // Adjust the slice extent so the data aspect ratio is preserved
+        // within the viewport. Extra space is filled with black (out-of-bounds).
+        let vp_w = f64::from(target.viewport.width.max(1));
+        let vp_h = f64::from(target.viewport.height.max(1));
+        let vp_aspect = vp_w / vp_h;
+        let data_aspect = slice_plane.width / slice_plane.height.max(1e-6);
+        if vp_aspect > data_aspect {
+            slice_plane.width = slice_plane.height * vp_aspect;
+        } else {
+            slice_plane.height = slice_plane.width / vp_aspect;
+        }
+
         self.renderer.render_slice(
             encoder,
             target.view,
