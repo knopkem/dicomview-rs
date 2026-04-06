@@ -5,14 +5,14 @@ use dicomview_core::{
     preset, IncrementalVolume, IncrementalVolumeError, SlicePreviewMode, SlicePreviewState,
     SliceProjectionMode, VolumeBlendMode, VolumeGeometry, VolumePresetId, VolumeViewState,
 };
-use glam::DVec3;
+use glam::{DVec2, DVec3};
 use std::sync::Arc;
 use thiserror::Error;
 use volren_core::{
     camera::{Camera, Projection},
     render_params::{BlendMode, VolumeRenderParams},
     transfer_function::{ColorTransferFunction, OpacityTransferFunction},
-    Aabb, WindowLevel,
+    Aabb, SlicePlane, WindowLevel,
 };
 use volren_gpu::{CrosshairParams, RenderError, Viewport, VolumeRenderer};
 
@@ -121,7 +121,11 @@ impl RenderEngine {
         );
         // Upload an initial transfer function so render_volume() doesn't fail
         // before the first slice arrives and updates the scalar range.
-        let params = render_params_for_state(self.active_preset, self.volume_state, (0.0, 1.0));
+        let params = render_params_for_state(
+            self.active_preset,
+            self.volume_state,
+            normalized_scalar_range((0.0, 1.0)),
+        );
         let _ = self.renderer.set_render_params(&params);
         Ok(())
     }
@@ -133,13 +137,19 @@ impl RenderEngine {
             .as_mut()
             .ok_or(RenderEngineError::NoPreparedVolume)?;
         volume.insert_slice(z_index, pixels)?;
-        let scalar_range = volume
+        let scalar_range = normalized_scalar_range(
+            volume
             .scalar_range()
             .map(|(min, max)| (f64::from(min), f64::from(max)))
-            .unwrap_or((0.0, 1.0));
+            .unwrap_or((0.0, 1.0)),
+        );
         update_texture_slice_i16(&mut self.renderer, z_index, pixels, scalar_range)?;
         // Refresh the transfer function with the updated scalar range
-        let params = render_params_for_state(self.active_preset, self.volume_state, scalar_range);
+        let params = render_params_for_state(
+            self.active_preset,
+            self.volume_state,
+            normalized_scalar_range(scalar_range),
+        );
         let _ = self.renderer.set_render_params(&params);
         Ok(())
     }
@@ -179,6 +189,16 @@ impl RenderEngine {
         }
     }
 
+    /// Returns immutable access to one slice viewport state.
+    #[must_use]
+    pub fn slice_state(&self, mode: SlicePreviewMode) -> &SlicePreviewState {
+        match mode {
+            SlicePreviewMode::Axial => &self.axial_state,
+            SlicePreviewMode::Coronal => &self.coronal_state,
+            SlicePreviewMode::Sagittal => &self.sagittal_state,
+        }
+    }
+
     /// Sets the active volume-rendering preset.
     pub fn set_volume_preset(&mut self, preset_id: VolumePresetId) {
         self.active_preset = preset_id;
@@ -196,6 +216,18 @@ impl RenderEngine {
             state.center_on_world(world, bounds);
         }
         Ok(())
+    }
+
+    /// Moves the shared MPR crosshair from one viewport-relative point.
+    pub fn set_crosshair_from_viewport(
+        &mut self,
+        mode: SlicePreviewMode,
+        uv: DVec2,
+        viewport: Viewport,
+    ) -> Result<(), RenderEngineError> {
+        let bounds = self.bounds()?;
+        let plane = fit_slice_plane_to_viewport(self.slice_state(mode).slice_plane(bounds), viewport);
+        self.set_crosshair(plane.point_to_world(uv))
     }
 
     /// Scrolls one slice viewport along its normal.
@@ -323,18 +355,7 @@ impl RenderEngine {
     ) -> Result<(), RenderEngineError> {
         let (center, width) = state.transfer_window(scalar_range.0, scalar_range.1);
         let window_level = WindowLevel::new(center, width.max(1.0));
-        let mut slice_plane = state.slice_plane(bounds);
-
-        // Preserve data aspect ratio within the viewport
-        let vp_w = f64::from(target.viewport.width.max(1));
-        let vp_h = f64::from(target.viewport.height.max(1));
-        let vp_aspect = vp_w / vp_h;
-        let data_aspect = slice_plane.width / slice_plane.height.max(1e-6);
-        if vp_aspect > data_aspect {
-            slice_plane.width = slice_plane.height * vp_aspect;
-        } else {
-            slice_plane.height = slice_plane.width / vp_aspect;
-        }
+        let slice_plane = fit_slice_plane_to_viewport(state.slice_plane(bounds), target.viewport);
 
         self.renderer.render_slice(
             encoder,
@@ -407,6 +428,27 @@ fn render_params_for_state(
     let (center, width) = view_state.transfer_window(scalar_range.0, scalar_range.1);
     params.window_level = Some(WindowLevel::new(center, width.max(1.0)));
     params
+}
+
+fn normalized_scalar_range((min, max): (f64, f64)) -> (f64, f64) {
+    if max > min {
+        (min, max)
+    } else {
+        (min, min + 1.0)
+    }
+}
+
+fn fit_slice_plane_to_viewport(mut slice_plane: SlicePlane, viewport: Viewport) -> SlicePlane {
+    let vp_w = f64::from(viewport.width.max(1));
+    let vp_h = f64::from(viewport.height.max(1));
+    let vp_aspect = vp_w / vp_h;
+    let data_aspect = slice_plane.width / slice_plane.height.max(1e-6);
+    if vp_aspect > data_aspect {
+        slice_plane.width = slice_plane.height * vp_aspect;
+    } else {
+        slice_plane.height = slice_plane.width / vp_aspect;
+    }
+    slice_plane
 }
 
 fn camera_for_state(geometry: VolumeGeometry, view_state: VolumeViewState) -> Camera {
@@ -607,22 +649,11 @@ impl SingleSliceEngine {
             .ok_or(RenderEngineError::NoPreparedVolume)?;
         let geometry = self.geometry.ok_or(RenderEngineError::NoPreparedVolume)?;
         let bounds = bounds_from_geometry(geometry);
-        let scalar_range = self.scalar_range().unwrap_or((0.0, 1.0));
+        let scalar_range = normalized_scalar_range(self.scalar_range().unwrap_or((0.0, 1.0)));
         let (center, width) = self.slice_state.transfer_window(scalar_range.0, scalar_range.1);
         let window_level = WindowLevel::new(center, width.max(1.0));
-        let mut slice_plane = self.slice_state.slice_plane(bounds);
-
-        // Adjust the slice extent so the data aspect ratio is preserved
-        // within the viewport. Extra space is filled with black (out-of-bounds).
-        let vp_w = f64::from(target.viewport.width.max(1));
-        let vp_h = f64::from(target.viewport.height.max(1));
-        let vp_aspect = vp_w / vp_h;
-        let data_aspect = slice_plane.width / slice_plane.height.max(1e-6);
-        if vp_aspect > data_aspect {
-            slice_plane.width = slice_plane.height * vp_aspect;
-        } else {
-            slice_plane.height = slice_plane.width / vp_aspect;
-        }
+        let slice_plane =
+            fit_slice_plane_to_viewport(self.slice_state.slice_plane(bounds), target.viewport);
 
         self.renderer.render_slice(
             encoder,
@@ -672,6 +703,25 @@ mod tests {
         let center = bounds_from_geometry(geometry).center();
         assert!((camera.focal_point() - center).length() < 1e-6);
         assert!(camera.distance() > bounds_from_geometry(geometry).diagonal());
+    }
+
+    #[test]
+    fn normalized_scalar_range_widens_flat_ranges() {
+        assert_eq!(normalized_scalar_range((5.0, 5.0)), (5.0, 6.0));
+        assert_eq!(normalized_scalar_range((5.0, 4.0)), (5.0, 6.0));
+        assert_eq!(normalized_scalar_range((-100.0, 300.0)), (-100.0, 300.0));
+    }
+
+    #[test]
+    fn viewport_fit_preserves_slice_center_and_aspect() {
+        let plane = SlicePlane::new(DVec3::ZERO, DVec3::X, DVec3::Y, 100.0, 50.0);
+        let fitted = fit_slice_plane_to_viewport(plane, Viewport::full(200, 200));
+        assert!((fitted.point_to_world(DVec2::splat(0.5)) - DVec3::ZERO).length() < 1e-6);
+        assert_abs_diff_eq!(fitted.width / fitted.height, 1.0, epsilon = 1e-6);
+
+        let wide = fit_slice_plane_to_viewport(plane, Viewport::full(400, 100));
+        assert!((wide.point_to_world(DVec2::splat(0.5)) - DVec3::ZERO).length() < 1e-6);
+        assert_abs_diff_eq!(wide.width / wide.height, 4.0, epsilon = 1e-6);
     }
 
     fn test_device() -> Option<(wgpu::Device, wgpu::Queue)> {

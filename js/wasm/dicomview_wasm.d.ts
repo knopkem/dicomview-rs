@@ -116,6 +116,10 @@ export class Viewer {
      */
     set_crosshair(x: number, y: number, z: number): void;
     /**
+     * Updates the shared MPR crosshair from one viewport-relative point.
+     */
+    set_crosshair_from_viewport(viewport: number, u: number, v: number, width: number, height: number): void;
+    /**
      * Configures thick-slab rendering for one slice viewport.
      */
     set_thick_slab(viewport: number, thickness: number, projection: number): void;
@@ -201,6 +205,7 @@ export interface InitOutput {
     readonly viewer_scroll_slice: (a: number, b: number, c: number) => [number, number];
     readonly viewer_set_blend_mode: (a: number, b: number) => [number, number];
     readonly viewer_set_crosshair: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly viewer_set_crosshair_from_viewport: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly viewer_set_thick_slab: (a: number, b: number, c: number, d: number) => [number, number];
     readonly viewer_set_volume_preset: (a: number, b: number, c: number) => [number, number];
     readonly viewer_set_window_level: (a: number, b: number, c: number) => [number, number];

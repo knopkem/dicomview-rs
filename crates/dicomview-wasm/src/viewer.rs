@@ -10,6 +10,8 @@ use js_sys::Reflect;
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
+use glam::DVec2;
+#[cfg(target_arch = "wasm32")]
 use dicomview_gpu::{
     CanvasSurface, FrameTargets, RenderEngine, RenderTarget, SingleSliceEngine, Viewport,
 };
@@ -207,6 +209,36 @@ impl Viewer {
             self.inner
                 .engine
                 .set_crosshair(DVec3::new(x, y, z))
+                .map_err(|error| js_error(error.to_string()))
+        }
+    }
+
+    /// Updates the shared MPR crosshair from one viewport-relative point.
+    pub fn set_crosshair_from_viewport(
+        &mut self,
+        viewport: u8,
+        u: f64,
+        v: f64,
+        width: u32,
+        height: u32,
+    ) -> Result<(), JsValue> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (viewport, u, v, width, height);
+            Err(js_error(
+                "viewport crosshair updates are only supported on wasm32 targets",
+            ))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.inner
+                .engine
+                .set_crosshair_from_viewport(
+                    parse_slice_viewport(viewport)?,
+                    DVec2::new(u, v),
+                    Viewport::full(width.max(1), height.max(1)),
+                )
                 .map_err(|error| js_error(error.to_string()))
         }
     }

@@ -86,6 +86,22 @@ export class Viewer {
     this.#requireInner().set_crosshair(x, y, z);
   }
 
+  setCrosshairFromViewport(
+    viewport: ViewportId,
+    u: number,
+    v: number,
+    width: number,
+    height: number,
+  ): void {
+    this.#requireInner().set_crosshair_from_viewport(
+      VIEWPORT_CODE[viewport],
+      u,
+      v,
+      Math.max(1, Math.round(width)),
+      Math.max(1, Math.round(height)),
+    );
+  }
+
   scrollSlice(viewport: ViewportId, delta: number): void {
     this.#requireInner().scroll_slice(VIEWPORT_CODE[viewport], delta);
   }

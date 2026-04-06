@@ -1,6 +1,6 @@
 {
   "name": "@knopkem/dicomview",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Rust/WASM medical imaging primitives for the web",
   "type": "module",
   "sideEffects": false,
